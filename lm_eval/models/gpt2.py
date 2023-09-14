@@ -1,8 +1,14 @@
 import torch
 import transformers
+import os
+import deepspeed
 from typing import Optional, Union
 from lm_eval.base import BaseLM
+from .utils import DSPipeline, Performance
+import torch.distributed as dist
 
+local_rank = int(os.getenv('LOCAL_RANK', '0'))
+world_size = int(os.getenv('WORLD_SIZE', '4'))
 
 def _get_dtype(
     dtype: Union[str, torch.dtype]
@@ -59,6 +65,7 @@ class HFLM(BaseLM):
                         model_name,
                         revision=revision,
                         trust_remote_code=trust_remote_code,
+                        use_fast=False,
                         )
 
         elif isinstance(pretrained, str):
@@ -82,14 +89,25 @@ class HFLM(BaseLM):
             revision = revision + ("/" + subfolder if subfolder is not None else "")
 
             # Initialize new model and tokenizer instances
-            self.model = transformers.AutoModelForCausalLM.from_pretrained(
+            #tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
+            '''config = transformers.AutoConfig.from_pretrained("gpt2-medium") #"/SSD/llama_hf/30B/config.json") #model_name)
+
+            #with deepspeed.OnDevice(dtype=torch.float16, device="cuda:0"): #dtype, device="meta"):
+            self.model = transformers.AutoModelForCausalLM.from_config(config, torch_dtype=torch.float16)'''
+            self.pipe = DSPipeline(model_name=pretrained,
+                dtype=torch.float16, #data_type,
+                is_meta=False, # use checkpoint json file, #args.use_meta_tensor,
+                device="cpu", #, args.local_rank,
+                ) #args.checkpoint_path)
+            self.model = self.pipe.model
+            '''self.model = transformers.AutoModelForCausalLM.from_pretrained(
                     pretrained,
-                    load_in_8bit=load_in_8bit,
-                    low_cpu_mem_usage=low_cpu_mem_usage,
+                    #load_in_8bit=load_in_8bit,
+                    #low_cpu_mem_usage=low_cpu_mem_usage,
                     revision=revision,
-                    torch_dtype=_get_dtype(dtype),
+                    torch_dtype=torch.float16,
                     trust_remote_code=trust_remote_code,
-                    ).to(self.device)
+                    )#.to("cpu")'''
             self.tokenizer = transformers.AutoTokenizer.from_pretrained(
                     tokenizer if tokenizer else pretrained,
                     revision=revision,
@@ -99,7 +117,22 @@ class HFLM(BaseLM):
         else:
             raise TypeError('Parameter pretrained should be of type str or transformers.PreTrainedModel')
 
+        '''dist.init_process_group(backend="nccl",
+                            #init_method=None,
+                            rank=local_rank,
+                            world_size=world_size,)
+        torch.cuda.set_device(dist.get_rank()) # --> https://discuss.pytorch.org/t/should-local-rank-be-equal-to-torch-cuda-current-device/150873
+        print(f"dist.get_rank: {dist.get_rank()}, {dist.get_world_size()}")
+        '''
         self.model.eval()
+
+        self.model = deepspeed.init_inference(self.model,
+                                mp_size=world_size,
+                                dtype=torch.float,
+                                #replace_policy=LLAMALayerPolicy,
+                                replace_with_kernel_inject=True)
+        print("self.model!!")
+        
 
         self.vocab_size = self.tokenizer.vocab_size
 

@@ -191,7 +191,7 @@ class HFLM(BaseLM):
     def tok_decode(self, tokens):
         return self.tokenizer.decode(tokens)
 
-    def _model_call(self, inps):
+    def _model_call(self, inps, inplens=None):
         """
         inps: a torch tensor of shape [batch, sequence]
         the size of sequence may vary from call to call
@@ -200,7 +200,7 @@ class HFLM(BaseLM):
         logits returned from the model
         """
         with torch.no_grad():
-            return self.model(inps)[0]
+            return self.model(inps, inplens)[0]
 
     def _model_generate(self, context, max_length, eos_token_id):
         generation_kwargs = {"do_sample": False, "max_length": max_length}

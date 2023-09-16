@@ -331,8 +331,14 @@ class LlamaAttention(nn.Module):
         if past_key_value is not None:
             kv_seq_len += past_key_value[0].shape[-2]
             
+        # import code; code.interact(banner='before apply_rotary_pos_emb', local=dict(globals(), **locals()))
+        # torch.save(query_states, '/NAS/JG/sait/tensors/concat/before_query_states.pth')
+        
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        
+        # torch.save(query_states, '/NAS/JG/sait/tensors/concat/after_query_states.pth')
+        # import code; code.interact(banner='after apply_rotary_pos_emb', local=dict(globals(), **locals()))
 
         if past_key_value is not None:
             # reuse k, v, self_attention
@@ -358,7 +364,12 @@ class LlamaAttention(nn.Module):
                 raise ValueError(
                     f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
                 )
+            
+            # import code; code.interact(banner='before add attention_mask', local=dict(globals(), **locals()))
+            # torch.save(attn_weights, '/NAS/JG/sait/tensors/concat/before_attn_weights.pth')
             attn_weights = attn_weights + attention_mask
+            # torch.save(attn_weights, '/NAS/JG/sait/tensors/concat/after_attn_weights.pth')
+            # import code; code.interact(banner='after add attention_mask', local=dict(globals(), **locals()))
 
         # upcast attention to fp32
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
@@ -420,8 +431,13 @@ class LlamaDecoderLayer(nn.Module):
         """
 
         residual = hidden_states
+        # import code; code.interact(banner='before input layer norm',local=dict(globals(), **locals()))
+        # torch.save(hidden_states, '/NAS/JG/sait/tensors/concat/before_inpln.pth')
         
         hidden_states = self.input_layernorm(hidden_states)
+        # torch.save(hidden_states, '/NAS/JG/sait/tensors/concat/after_inpln.pth')
+        # import code; code.interact(banner='after input layer norm', local=dict(globals(), **locals()))
+
         # Self Attention
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,
@@ -436,8 +452,13 @@ class LlamaDecoderLayer(nn.Module):
 
         # Fully Connected
         residual = hidden_states
+        # import code; code.interact(banner='before post layer norm',local=dict(globals(), **locals()))
+        # torch.save(hidden_states, '/NAS/JG/sait/tensors/concat/before_postln.pth')
         
         hidden_states = self.post_attention_layernorm(hidden_states)
+        # torch.save(hidden_states, '/NAS/JG/sait/tensors/concat/after_postln.pth')
+        # import code; code.interact(banner='after post layer norm', local=dict(globals(), **locals()))
+        
         hidden_states = self.mlp(hidden_states)
         hidden_states = residual + hidden_states
 
@@ -670,7 +691,9 @@ class LlamaModel(LlamaPreTrainedModel):
         
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
-        
+        # import code; code.interact(banner='LlamaModel input_ids, input_embed', local=dict(globals(), **locals()))
+        # torch.save(input_ids, '/NAS/JG/sait/tensors/concat/input_ids.pth')
+        # torch.save(inputs_embeds, '/NAS/JG/sait/tensors/concat/inputs_embeds.pth')
         # embed positions
         if attention_mask is None:
             attention_mask = torch.ones(

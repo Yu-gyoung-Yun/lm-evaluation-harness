@@ -236,6 +236,8 @@ class Reorderer2:
 
         self.arr = arr
         self.maxlen = -temp[0][0]
+        self.minlen = -temp[-1][0]
+
 
     def get_reordered(self):
         return [x[1] for x in self.arr]

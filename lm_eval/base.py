@@ -316,7 +316,6 @@ class BaseLM(LM):
             cont_toks_list = []
             inplens = []
 
-            padding_length = None
             # because vectorizing is annoying, we first convert each (context, continuation) pair to padded
             # tensors, then we pack them together into a batch, call the model, and then pick it all apart
             # again because vectorizing is annoying
@@ -324,6 +323,7 @@ class BaseLM(LM):
                 concat_inp = None
                 concat_inplens = []
                 concat_cont = []
+                padding_length = 200
                 for _, context_enc, continuation_enc in chunk:
                     # sanity check
                     assert len(context_enc) > 0

@@ -341,7 +341,7 @@ class BaseLM(LM):
                     inp = torch.tensor(
                         (context_enc + continuation_enc)[-(self.max_length + 1) :][:-1],
                         dtype=torch.long,
-                    ).to(self.device)
+                    ).to(torch.cuda.current_device()) #self.device)
                     
                     if concat_inp is None:
                         concat_inp = inp

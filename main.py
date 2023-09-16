@@ -30,6 +30,9 @@ def parse_args():
     parser.add_argument("--check_integrity", action="store_true")
     parser.add_argument("--write_out", action="store_true", default=False)
     parser.add_argument("--output_base_path", type=str, default=None)
+    parser.add_argument("--local_rank", type=int, default=int(os.getenv("LOCAL_RANK", "0")), help="local rank")
+    parser.add_argument("--world_size", type=int, default=int(os.getenv("WORLD_SIZE", "2")), help="world_size")
+
 
     return parser.parse_args()
 

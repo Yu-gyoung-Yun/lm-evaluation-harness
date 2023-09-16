@@ -107,24 +107,26 @@ class HFLM(BaseLM):
         local_rank = int(os.getenv('LOCAL_RANK', '0'))
         world_size = int(os.getenv('WORLD_SIZE', '2'))
         print(f"Please check the world_size: {world_size}")
-        '''zero_config = {
-            "kernel_inject": False,
+        zero_config = {
+            #"kernel_inject": False,
             "tensor_parallel": {"tp_size": world_size},
             "dtype": torch.half,
-            "enable_cuda_graph": False
+            #"enable_cuda_graph": False
         }
-        self.model = deepspeed.init_inference(self.model,
+        '''self.model = deepspeed.init_inference(self.model,
                                 #mp_size=world_size,
                                 dtype=torch.half,
                                 config=zero_config,
                                 #replace_policy=LLAMALayerPolicy
         )'''
         self.model = deepspeed.init_inference(self.model,
-                                mp_size=world_size,
+                                #mp_size=world_size,
                                 dtype=torch.half,
-                                #config=zero_config,
+                                #use_triton=True,
+                                config=zero_config,
                                 #replace_policy=LLAMALayerPolicy,
-                                replace_with_kernel_inject=True)
+        )
+                                #replace_with_kernel_inject=True) # --> if This is True then, there's no AutoTP
         '''for name, param in self.model.named_parameters():
             if param.dtype == torch.float16:
                 print(f"Parameter {name} is of dtype torch.half (float16).")'''

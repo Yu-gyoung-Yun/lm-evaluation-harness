@@ -1,14 +1,10 @@
 import torch
 import transformers
-import os
-import deepspeed
 from typing import Optional, Union
 from lm_eval.base import BaseLM
-from .utils import DSPipeline, Performance
-import torch.distributed as dist
-
-local_rank = int(os.getenv('LOCAL_RANK', '0'))
-world_size = int(os.getenv('WORLD_SIZE', '4'))
+import os
+import deepspeed
+from deepspeed import comm as dist
 
 def _get_dtype(
     dtype: Union[str, torch.dtype]
@@ -89,50 +85,50 @@ class HFLM(BaseLM):
             revision = revision + ("/" + subfolder if subfolder is not None else "")
 
             # Initialize new model and tokenizer instances
-            #tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
-            '''config = transformers.AutoConfig.from_pretrained("gpt2-medium") #"/SSD/llama_hf/30B/config.json") #model_name)
-
-            #with deepspeed.OnDevice(dtype=torch.float16, device="cuda:0"): #dtype, device="meta"):
-            self.model = transformers.AutoModelForCausalLM.from_config(config, torch_dtype=torch.float16)'''
-            self.pipe = DSPipeline(model_name=pretrained,
-                dtype=torch.float16, #data_type,
-                is_meta=False, # use checkpoint json file, #args.use_meta_tensor,
-                device="cpu", #, args.local_rank,
-                ) #args.checkpoint_path)
-            self.model = self.pipe.model
-            '''self.model = transformers.AutoModelForCausalLM.from_pretrained(
+            self.model = transformers.AutoModelForCausalLM.from_pretrained(
                     pretrained,
                     #load_in_8bit=load_in_8bit,
                     #low_cpu_mem_usage=low_cpu_mem_usage,
                     revision=revision,
-                    torch_dtype=torch.float16,
+                    torch_dtype=torch.float16, #_get_dtype(dtype),
                     trust_remote_code=trust_remote_code,
-                    )#.to("cpu")'''
+                    )#.to(self.device)
             self.tokenizer = transformers.AutoTokenizer.from_pretrained(
                     tokenizer if tokenizer else pretrained,
                     revision=revision,
                     trust_remote_code=trust_remote_code,
+                    use_fast = False,
                     )
 
         else:
             raise TypeError('Parameter pretrained should be of type str or transformers.PreTrainedModel')
 
-        '''dist.init_process_group(backend="nccl",
-                            #init_method=None,
-                            rank=local_rank,
-                            world_size=world_size,)
-        torch.cuda.set_device(dist.get_rank()) # --> https://discuss.pytorch.org/t/should-local-rank-be-equal-to-torch-cuda-current-device/150873
-        print(f"dist.get_rank: {dist.get_rank()}, {dist.get_world_size()}")
-        '''
         self.model.eval()
-
+        local_rank = int(os.getenv('LOCAL_RANK', '0'))
+        world_size = int(os.getenv('WORLD_SIZE', '2'))
+        print(f"Please check the world_size: {world_size}")
+        '''zero_config = {
+            "kernel_inject": False,
+            "tensor_parallel": {"tp_size": world_size},
+            "dtype": torch.half,
+            "enable_cuda_graph": False
+        }
+        self.model = deepspeed.init_inference(self.model,
+                                #mp_size=world_size,
+                                dtype=torch.half,
+                                config=zero_config,
+                                #replace_policy=LLAMALayerPolicy
+        )'''
         self.model = deepspeed.init_inference(self.model,
                                 mp_size=world_size,
-                                dtype=torch.float,
+                                dtype=torch.half,
+                                #config=zero_config,
                                 #replace_policy=LLAMALayerPolicy,
                                 replace_with_kernel_inject=True)
-        print("self.model!!")
         
+        #print(f"self.model.parameters()[0].data.dtype: {self.model.model.parameters()[0].data.dtype}")
+        print(f"deepspeed.get_accelerator().current_device_name(): {deepspeed.get_accelerator().current_device_name()}")
+        torch.cuda.set_device(deepspeed.get_accelerator().current_device_name())
 
         self.vocab_size = self.tokenizer.vocab_size
 

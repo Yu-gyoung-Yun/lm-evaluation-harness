@@ -64,6 +64,22 @@ def join_iters(iters):
     for iter in iters:
         yield from iter
 
+def chunks2(iter, n=0, fn=None):
+    arr = []
+    arr2 = []
+    n_concat = 2
+
+    for i, x in enumerate(iter):
+        arr2.append(x)
+        if len(arr2) == n_concat:
+            arr.append(arr2)
+            arr2 = []
+        if len(arr) == (fn(i) if fn else n // n_concat):
+            yield arr
+            arr = []
+
+    if arr:
+        yield arr
 
 def chunks(iter, n=0, fn=None):
     arr = []
@@ -76,10 +92,9 @@ def chunks(iter, n=0, fn=None):
     if arr:
         yield arr
 
-
 def group(arr, fn):
     res = collections.defaultdict(list)
-
+    
     for ob in arr:
         res[fn(ob)].append(ob)
 
@@ -199,6 +214,45 @@ def select_continuation_from_batch_left_padding(
     return generations[:, max_context_size:]
 
 
+class Reorderer2:
+    def __init__(self, arr, fn):
+        self.size = len(arr)
+        arr = list(enumerate(arr))
+        arr_sort = sorted(arr, key=lambda x: fn(x[1]))
+        arr = group(arr, lambda x: fn(x[1]))
+        arr = [([y[0] for y in x], x[0][1]) for x in arr]
+        
+        arr_ascending = sorted(arr, key=lambda x: fn(x[1]))
+        temp = []
+        maxlen = 0
+        for i in range(self.size // 2):
+            concat_len = fn(arr_ascending[i][1])[0] + fn(arr_ascending[-i-1][1])[0]
+            temp.append([concat_len, [arr_ascending[i], arr_ascending[-i-1]]])
+        temp.sort(key=lambda x: x[0])
+        
+        arr = []
+        for x in temp:
+            arr += x[1]
+
+        self.arr = arr
+        self.maxlen = -temp[0][0]
+
+    def get_reordered(self):
+        return [x[1] for x in self.arr]
+
+    def get_original(self, newarr):
+        res = [None] * self.size
+        cov = [False] * self.size
+
+        for (inds, _), v in zip(self.arr, newarr):
+            for ind in inds:
+                res[ind] = v
+                cov[ind] = True
+
+        assert all(cov)
+
+        return res
+    
 class Reorderer:
     def __init__(self, arr, fn):
         self.size = len(arr)
@@ -215,7 +269,7 @@ class Reorderer:
     def get_original(self, newarr):
         res = [None] * self.size
         cov = [False] * self.size
-
+        
         for (inds, _), v in zip(self.arr, newarr):
             for ind in inds:
                 res[ind] = v

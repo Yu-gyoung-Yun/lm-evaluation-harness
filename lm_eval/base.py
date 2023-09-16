@@ -283,11 +283,12 @@ class BaseLM(LM):
             toks = x[1] + x[2]
             return -len(toks), tuple(toks)
 
-        re_ord = utils.Reorderer(requests, _collate)
+        re_ord = utils.Reorderer2(requests, _collate)
 
         reordered_requests = re_ord.get_reordered()
         n_reordered_requests = len(reordered_requests)
 
+        padding_length = 200
         # automatic (variable) batch size detection for vectorization
         # pull longest context sample from request
         def _batch_scheduler(pos):
@@ -301,7 +302,7 @@ class BaseLM(LM):
             print(f"Determined largest batch size: {self.batch_sizes[sched]}")
             return self.batch_sizes[sched]
 
-        for chunk in utils.chunks(
+        for chunks in utils.chunks2(
             tqdm(reordered_requests, disable=disable_tqdm),
             n=self.batch_size
             if self.batch_size != "auto"
@@ -316,91 +317,106 @@ class BaseLM(LM):
             cont_toks_list = []
             inplens = []
 
-            padding_length = None
-
             # because vectorizing is annoying, we first convert each (context, continuation) pair to padded
             # tensors, then we pack them together into a batch, call the model, and then pick it all apart
             # again because vectorizing is annoying
+            for chunk in chunks:
+                concat_inp = None
+                concat_inplens = []
+                concat_cont = []
+                for _, context_enc, continuation_enc in chunk:
+                    # sanity check
+                    assert len(context_enc) > 0
+                    assert len(continuation_enc) > 0
+                    assert len(continuation_enc) <= self.max_length
 
-            for _, context_enc, continuation_enc in chunk:
-                # sanity check
-                assert len(context_enc) > 0
-                assert len(continuation_enc) > 0
-                assert len(continuation_enc) <= self.max_length
+                    # how this all works:
+                    #          CTX      CONT
+                    # inp    0 1 2 3|4 5 6 7 8 9   <- last token is deleted by inp[:, :-1]
+                    # gpt2    \               \
+                    # logits   1 2 3|4 5 6 7 8 9   <- the ctx half gets tossed out by the
+                    # cont_toks      4 5 6 7 8 9      [:, -len(continuation_enc):, :self.vocab_size] slice
 
-                # how this all works:
-                #          CTX      CONT
-                # inp    0 1 2 3|4 5 6 7 8 9   <- last token is deleted by inp[:, :-1]
-                # gpt2    \               \
-                # logits   1 2 3|4 5 6 7 8 9   <- the ctx half gets tossed out by the
-                # cont_toks      4 5 6 7 8 9      [:, -len(continuation_enc):, :self.vocab_size] slice
-
-                # when too long to fit in context, truncate from the left
-                inp = torch.tensor(
-                    (context_enc + continuation_enc)[-(self.max_length + 1) :][:-1],
-                    dtype=torch.long,
-                ).to(torch.cuda.current_device()) #self.device)
-                (inplen,) = inp.shape
-
-                cont = continuation_enc
-
+                    # when too long to fit in context, truncate from the left
+                    inp = torch.tensor(
+                        (context_enc + continuation_enc)[-(self.max_length + 1) :][:-1],
+                        dtype=torch.long,
+                    ).to(self.device)
+                    
+                    if concat_inp is None:
+                        concat_inp = inp
+                    else:
+                        concat_inp = torch.cat([concat_inp, inp], dim=0)
+                        
+                    (inplen,) = inp.shape
+                    cont = continuation_enc
+                    concat_cont.append(cont)
+                    concat_inplens.append(inplen)
+                
+                concat_inplen = sum(concat_inplens)
                 # since in _collate we make sure length is descending, the longest is always the first one.
                 padding_length = (
-                    padding_length if padding_length is not None else inplen
+                    padding_length if padding_length is not None else concat_inplen
                 )
-
+                
                 # pad length from seq to padding_length
-                inp = torch.cat(
+                
+                concat_inp = torch.cat(
                     [
-                        inp,  # [seq]
-                        torch.zeros(padding_length - inplen, dtype=torch.long).to(
-                            inp.device
+                        concat_inp,  # [seq]
+                        torch.zeros(padding_length - concat_inplen, dtype=torch.long).to(
+                            concat_inp.device
                         ),  # [padding_length - seq]
                     ],
                     dim=0,
                 )
 
-                inps.append(inp.unsqueeze(0))  # [1, padding_length]
-                cont_toks_list.append(cont)
-                inplens.append(inplen)
+                inps.append(concat_inp.unsqueeze(0))  # [1, padding_length]
+                cont_toks_list.append(concat_cont)
+                inplens.append(concat_inplens)
 
             batched_inps = torch.cat(inps, dim=0)  # [batch, padding_length]
             multi_logits = F.log_softmax(
-                self._model_call(batched_inps), dim=-1
+                self._model_call(batched_inps, inplens=inplens), dim=-1
             ).cpu()  # [batch, padding_length, vocab]
-
-            for (cache_key, _, _), logits, inp, inplen, cont_toks in zip(
-                chunk, multi_logits, inps, inplens, cont_toks_list
+            
+            for chunk_, logits_, inplen_, cont_toks_ in zip(
+                chunks, multi_logits, inplens, cont_toks_list
             ):
+                concat_inplen = sum(inplen_)
+                concat_inplen = concat_inplen + (logits_.shape[0] - padding_length) # if "virtual tokens" (from prompt tuning) are added, inplen is larger
+                logits_ = logits_[:concat_inplen]
+                logits_ = [logits_[:inplen_[0],...],logits_[inplen_[0]:,...]]
+                for (cache_key, _, _), logits, inplen, cont_toks in zip(
+                    chunk_, logits_, inplen_, cont_toks_
+                ):
+                    # Slice to original seq length
+                    contlen = len(cont_toks)
 
-                # Slice to original seq length
-                contlen = len(cont_toks)
-                inplen = inplen + (logits.shape[0] - padding_length) # if "virtual tokens" (from prompt tuning) are added, inplen is larger
-                logits = logits[inplen - contlen : inplen].unsqueeze(
-                    0
-                )  # [1, seq, vocab]
+                    logits = logits[inplen - contlen : inplen].unsqueeze(
+                        0
+                    )  # [1, seq, vocab]
+                    # Check if per-token argmax is exactly equal to continuation
+                    greedy_tokens = logits.argmax(dim=-1)
+                    cont_toks = torch.tensor(cont_toks, dtype=torch.long).unsqueeze(
+                        0
+                    )  # [1, seq]
+                    max_equal = (greedy_tokens == cont_toks).all()
 
-                # Check if per-token argmax is exactly equal to continuation
-                greedy_tokens = logits.argmax(dim=-1)
-                cont_toks = torch.tensor(cont_toks, dtype=torch.long).unsqueeze(
-                    0
-                )  # [1, seq]
-                max_equal = (greedy_tokens == cont_toks).all()
+                    # Obtain log-probs at the corresponding continuation token indices
+                    # last_token_slice = logits[:, -1, :].squeeze(0).tolist()
+                    logits = torch.gather(logits, 2, cont_toks.unsqueeze(-1)).squeeze(
+                        -1
+                    )  # [1, seq]
 
-                # Obtain log-probs at the corresponding continuation token indices
-                # last_token_slice = logits[:, -1, :].squeeze(0).tolist()
-                logits = torch.gather(logits, 2, cont_toks.unsqueeze(-1)).squeeze(
-                    -1
-                )  # [1, seq]
+                    # Answer: (log prob, is-exact-match)
+                    answer = (float(logits.sum()), bool(max_equal))
 
-                # Answer: (log prob, is-exact-match)
-                answer = (float(logits.sum()), bool(max_equal))
+                    # partial caching
+                    if cache_key is not None:
+                        self.cache_hook.add_partial("loglikelihood", cache_key, answer)
 
-                # partial caching
-                if cache_key is not None:
-                    self.cache_hook.add_partial("loglikelihood", cache_key, answer)
-
-                res.append(answer)
+                    res.append(answer)
 
         return re_ord.get_original(res)
 

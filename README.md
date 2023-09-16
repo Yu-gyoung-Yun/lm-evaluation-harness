@@ -1,7 +1,7 @@
 # Language Model Evaluation Harness
 
 ## DeepSpeed + lm_eval for inference Speed-UP when there are no Quantization and Pruning Optimizations.
-
+ deepspeed --num_gpus 1 main.py --model hf-causal --model_args pretrained=/SSD/llama_hf/7B --tasks hellaswag --limit 1000 --batch_size=2 --no_cache
 ## need to copy modeling_llama.py to ${python_path}/site-packages/transformers/models/llama/modeling_llama.py
 
 ## We're Refactoring LM-Eval!

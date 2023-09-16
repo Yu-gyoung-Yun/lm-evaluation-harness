@@ -288,7 +288,6 @@ class BaseLM(LM):
         reordered_requests = re_ord.get_reordered()
         n_reordered_requests = len(reordered_requests)
 
-        padding_length = 200
         # automatic (variable) batch size detection for vectorization
         # pull longest context sample from request
         def _batch_scheduler(pos):
@@ -317,6 +316,7 @@ class BaseLM(LM):
             cont_toks_list = []
             inplens = []
 
+            padding_length = None
             # because vectorizing is annoying, we first convert each (context, continuation) pair to padded
             # tensors, then we pack them together into a batch, call the model, and then pick it all apart
             # again because vectorizing is annoying

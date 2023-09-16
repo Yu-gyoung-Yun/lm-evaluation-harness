@@ -2,6 +2,7 @@
 
 ## DeepSpeed + lm_eval for inference Speed-UP when there are no Quantization and Pruning Optimizations.
 
+## need to copy modeling_llama.py to ${python_path}/site-packages/transformers/models/llama/modeling_llama.py
 
 ## We're Refactoring LM-Eval!
 (as of 6/15/23)

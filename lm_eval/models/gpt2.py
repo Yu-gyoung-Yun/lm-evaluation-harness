@@ -125,7 +125,10 @@ class HFLM(BaseLM):
                                 #config=zero_config,
                                 #replace_policy=LLAMALayerPolicy,
                                 replace_with_kernel_inject=True)
-        
+        '''for name, param in self.model.named_parameters():
+            if param.dtype == torch.float16:
+                print(f"Parameter {name} is of dtype torch.half (float16).")'''
+
         #print(f"self.model.parameters()[0].data.dtype: {self.model.model.parameters()[0].data.dtype}")
         print(f"deepspeed.get_accelerator().current_device_name(): {deepspeed.get_accelerator().current_device_name()}")
         torch.cuda.set_device(deepspeed.get_accelerator().current_device_name())

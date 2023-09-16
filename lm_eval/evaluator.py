@@ -8,10 +8,11 @@ import lm_eval.tasks
 import lm_eval.base
 from lm_eval.utils import positional_deprecated, run_task_tests
 from lm_eval.models.gpt2 import HFLM
-
+import code
 import numpy as np
 import transformers
-
+import torch
+import deepspeed
 
 @positional_deprecated
 def simple_evaluate(
@@ -69,7 +70,11 @@ def simple_evaluate(
     np.random.seed(1234)
 
     assert tasks != [], "No tasks specified"
-
+    def skip(*args, **kwargs):
+        pass
+    torch.nn.init.kaiming_uniform_ = skip
+    torch.nn.init.uniform_ = skip
+    torch.nn.init.normal_ = skip
     if isinstance(model, str):
         if model_args is None:
             model_args = ""
@@ -388,7 +393,10 @@ def evaluate(
                 encoding="utf8",
             ) as fp:
                 json.dump(write_out_info[task_name], fp, indent=4, ensure_ascii=False)
-
+    #gpu_peak_mem = deepspeed.get_accelerator().max_memory_allocated(torch.cuda.current_device())
+    #print(f"gpu_peak_mem: {gpu_peak_mem} w/ {deepspeed.get_accelerator().current_device_name()}")
+    gpu_peak_mem = torch.cuda.max_memory_allocated(torch.cuda.current_device())
+    print(f"gpu_peak_mem: {gpu_peak_mem / 2**30 } GiB w/ GPU {torch.cuda.current_device()}")
     return {"results": dict(results), "versions": dict(versions)}
 
 

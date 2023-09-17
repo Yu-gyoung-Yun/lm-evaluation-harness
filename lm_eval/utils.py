@@ -225,15 +225,20 @@ class Reorderer2:
         arr_ascending = sorted(arr, key=lambda x: fn(x[1]))
         temp = []
         maxlen = 0
-        for i in range(self.size // 2):
+        size = len(arr)
+        
+        for i in range(size // 2):
             concat_len = fn(arr_ascending[i][1])[0] + fn(arr_ascending[-i-1][1])[0]
             temp.append([concat_len, [arr_ascending[i], arr_ascending[-i-1]]])
+        
+        if size % 2:
+            temp.append([concat_len, [arr_ascending[size // 2], arr_ascending[size // 2]]])
+            
         temp.sort(key=lambda x: x[0])
         
         arr = []
         for x in temp:
             arr += x[1]
-
         self.arr = arr
         self.maxlen = -temp[0][0] - 2
         self.minlen = -temp[-1][0] - 2

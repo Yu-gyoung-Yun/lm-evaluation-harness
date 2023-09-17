@@ -32,7 +32,10 @@ def parse_args():
     parser.add_argument("--output_base_path", type=str, default=None)
     parser.add_argument("--local_rank", type=int, default=int(os.getenv("LOCAL_RANK", "0")), help="local rank")
     parser.add_argument("--world_size", type=int, default=int(os.getenv("WORLD_SIZE", "2")), help="world_size")
-
+    # sequence concat options
+    parser.add_argument("--concat", action="store_true")
+    parser.add_argument("--padlen", type=str, default=None, 
+                        help="Choices : [None (dynamic padding) max (maxlen in dataset), int (fixed length e.g. 200)]")
 
     return parser.parse_args()
 
@@ -74,6 +77,8 @@ def main():
         check_integrity=args.check_integrity,
         write_out=args.write_out,
         output_base_path=args.output_base_path,
+        concat=args.concat,
+        padlen=args.padlen,
     )
 
     dumped = json.dumps(results, indent=2)

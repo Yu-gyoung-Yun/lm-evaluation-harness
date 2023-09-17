@@ -36,10 +36,15 @@ class HFLM(BaseLM):
         load_in_8bit: Optional[bool] = False,
         trust_remote_code: Optional[bool] = False,
         dtype: Optional[Union[str, torch.dtype]]="auto",
+        concat: Optional[bool] = False,
+        padlen: Optional[str] = None,
     ):
         super().__init__()
-
-
+        
+        # sequence concat
+        self.concat = concat
+        self.padlen = padlen
+        
         # Initialize model
         if isinstance(pretrained, transformers.PreTrainedModel):
             self.model = pretrained
@@ -92,7 +97,7 @@ class HFLM(BaseLM):
                     revision=revision,
                     torch_dtype=torch.float16, #_get_dtype(dtype),
                     trust_remote_code=trust_remote_code,
-                    )#.to(self.device)
+                    ).to(self.device)
             self.tokenizer = transformers.AutoTokenizer.from_pretrained(
                     tokenizer if tokenizer else pretrained,
                     revision=revision,
@@ -133,7 +138,6 @@ class HFLM(BaseLM):
         #print(f"self.model.parameters()[0].data.dtype: {self.model.model.parameters()[0].data.dtype}")
         print(f"deepspeed.get_accelerator().current_device_name(): {deepspeed.get_accelerator().current_device_name()}")
         torch.cuda.set_device(deepspeed.get_accelerator().current_device_name())
-
         self.vocab_size = self.tokenizer.vocab_size
 
         # Validate batch_size

@@ -74,7 +74,7 @@ def chunks2(iter, n=0, fn=None):
         if len(arr2) == n_concat:
             arr.append(arr2)
             arr2 = []
-        if len(arr) == (fn(i) if fn else n // n_concat):
+        if len(arr) == (fn(i) if fn else n):
             yield arr
             arr = []
 
@@ -235,8 +235,8 @@ class Reorderer2:
             arr += x[1]
 
         self.arr = arr
-        self.maxlen = -temp[0][0]
-        self.minlen = -temp[-1][0]
+        self.maxlen = -temp[0][0] - 2
+        self.minlen = -temp[-1][0] - 2
 
 
     def get_reordered(self):

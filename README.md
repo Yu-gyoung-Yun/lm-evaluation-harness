@@ -2,7 +2,27 @@
 
 ## DeepSpeed + lm_eval for inference Speed-UP when there are no Quantization and Pruning Optimizations.
  deepspeed --num_gpus 1 main.py --model hf-causal --model_args pretrained=/SSD/llama_hf/7B --tasks hellaswag --limit 1000 --batch_size=2 --no_cache
-## need to copy modeling_llama.py to ${python_path}/site-packages/transformers/models/llama/modeling_llama.py
+## Sequence concatenation for fixed-length
+**need to copy modeling_llama.py to ${python_path}/site-packages/transformers/models/llama/modeling_llama.py**
+* --concat : use sequence concatenation
+* --padlen max : fix to the longest length in the given data
+* --padlen $int (e.g. 200) : fix to the $int
+* 
+
+If --concat is not given, the --padlen option is not used.
+If --concat is given and the --padlen option is not given, the padding length is not fixed.
+
+* Example
+```bash
+# original mode
+python main.py {several options ...}
+# concat mode (padding length is not fixed)
+python main.py {several options ...} --concat
+# concat mode (padding length is fixed to longest length in the data)
+python main.py {several options ...} --concat --padlen max
+# concat mode (padding length is fixed to given length (e.g. 200))
+python main.py {several options ...} --concat --padlen 200
+```
 
 ## We're Refactoring LM-Eval!
 (as of 6/15/23)

@@ -97,7 +97,7 @@ class HFLM(BaseLM):
                     revision=revision,
                     torch_dtype=torch.float16, #_get_dtype(dtype),
                     trust_remote_code=trust_remote_code,
-                    ).to(self.device)
+                    )#.to(self.device)
             self.tokenizer = transformers.AutoTokenizer.from_pretrained(
                     tokenizer if tokenizer else pretrained,
                     revision=revision,

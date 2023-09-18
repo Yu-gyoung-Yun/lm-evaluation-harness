@@ -1,4 +1,3 @@
-# This might be slower than deepspeed.inference
 import torch
 import transformers
 from typing import Optional, Union

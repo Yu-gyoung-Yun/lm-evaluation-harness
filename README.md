@@ -1,7 +1,16 @@
 # Language Model Evaluation Harness
 
 ## DeepSpeed + lm_eval for inference Speed-UP when there are no Quantization and Pruning Optimizations.
- deepspeed --num_gpus 1 main.py --model hf-causal --model_args pretrained=/SSD/llama_hf/7B --tasks hellaswag --limit 1000 --batch_size=2 --no_cache
+When, Executing the DeepSpeed with FP16 mode (no quantization effect), we need to adjust the following command as disable mode in deepspeed/inference/engine.py
+```python
+quantization_setting = None
+self._init_quantization_setting(
+quantization_setting)  # todo: update with the new quant config for weight quant
+```
+```bash
+deepspeed --num_gpus 1 main.py --model hf-causal --model_args pretrained=/SSD/llama_hf/7B --tasks hellaswag --limit 1000 --batch_size=2 --no_cache
+```
+
 ## Sequence concatenation for fixed-length
 **need to copy modeling_llama.py to ${python_path}/site-packages/transformers/models/llama/modeling_llama.py**
 * --concat : use sequence concatenation

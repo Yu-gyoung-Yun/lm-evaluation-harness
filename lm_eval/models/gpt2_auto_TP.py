@@ -6,6 +6,8 @@ import os
 import deepspeed
 from deepspeed import comm as dist
 import tensor_parallel
+import accelerate
+import json
 
 def _get_dtype(
     dtype: Union[str, torch.dtype]
@@ -89,7 +91,7 @@ class HFLM(BaseLM):
                     else torch.device("cpu")
                 )
             revision = revision + ("/" + subfolder if subfolder is not None else "")
-
+            print("hereererere")
             # Initialize new model and tokenizer instances
             # lm_eval OG
             '''self.model = transformers.AutoModelForCausalLM.from_pretrained(
@@ -108,15 +110,17 @@ class HFLM(BaseLM):
                     use_fast = False,
                     )'''
             model_name = pretrained #'models/llama-30b'
-
-            tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
-            with accelerate.init_empty_weights():
-                self.model = AutoModelForCausalLM.from_config(AutoConfig.from_pretrained(model_name)).half()
+            self.tokenizer = transformers.AutoTokenizer.from_pretrained(model_name, use_fast=False)
+            with accelerate.init_empty_weights(): #  get loading this onto the CPU directly.
+                self.model = transformers.AutoModelForCausalLM.from_config(transformers.AutoConfig.from_pretrained(model_name)).half()
+                #self.model = transformers.AutoModelForCausalLM.from_pretrained(model_name)
                 #model = tensor_parallel.TensorParallelPreTrainedModel(model)
-                self.model = tensor_parallel.tensor_parallel(model, ["cuda:0", "cuda:1", "cuda:2", "cuda:3" ])
+                self.model = tensor_parallel.tensor_parallel(self.model, ["cuda:0", "cuda:1", "cuda:2", "cuda:3" ])
+                print("TP!!!!!!!!!!!!")
 
-            device_map = tensor_parallel.infer_sharded_device_map(model) # <- The model is on meta device but we can sill deduce
+            device_map = tensor_parallel.infer_sharded_device_map(self.model) # <- The model is on meta device but we can sill deduce
                                                             #    the target devices for each weight using this helper function
+            # Auto TP config를 sckeleton-based로
             # Get nums parts
             with open(f"{model_name}/pytorch_model.bin.index.json", "r") as index_file:
                 shard_filenames = set(json.load(index_file)["weight_map"].values())
@@ -129,7 +133,7 @@ class HFLM(BaseLM):
                 # Convert model shard
                 converted_state_dict = tensor_parallel.convert_state_dict( # <- tensor_parallel helper function. 
                     torch.load(shard_path),                   #    Creates a tensor_parallel checkpoint form a normal one
-                    model.tensor_parallel_config,
+                    self.model.tensor_parallel_config,
                     world_size=4,
                     for_pretrained=True,
                 )    
@@ -137,8 +141,8 @@ class HFLM(BaseLM):
                 del converted_state_dict
                     
                 # Dispatch the shard
-                accelerate.load_checkpoint_in_model(
-                    model,
+                accelerate.load_checkpoint_in_model( #  will load a checkpoint inside your empty model and dispatch the weights for each layer across all the devices you have available (GPU/MPS and CPU RAM).
+                    self.model,
                     checkpoint="/tmp/shard.bin",
                     device_map=device_map,
                 )
@@ -151,7 +155,7 @@ class HFLM(BaseLM):
 
         self.model.eval()
         local_rank = int(os.getenv('LOCAL_RANK', '0'))
-        world_size = int(os.getenv('WORLD_SIZE', '2'))
+        world_size = int(os.getenv('WORLD_SIZE', '4'))
         print(f"Please check the world_size: {world_size}")
         zero_config = {
             #"kernel_inject": False,
